@@ -121,7 +121,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 			return gw_dest_mac[intf]
 
 	# GET IN PORT
-	def get_in_port(nf, d):
+	def get_in_port(self, nf, d):
 		result_tuple = []
 	
 		for dpid in topology_info.keys(): # For each switch...
