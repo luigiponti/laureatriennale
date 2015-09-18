@@ -157,12 +157,12 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 		    for stat in sorted([flow for flow in body if flow.priority >= 34500 ],
 		                       key=lambda flow: (flow.priority)):
 		        try:
-		            if (stat.match['ipv4_src'] == flow_state[flow_id]['ip_src']) and (stat.match['tcp_src'] == flow_state[flow_id]['port_src']):
+		            if (stat.match['ipv4_src'] == flows_state[flow_id]['ip_src']) and (stat.match['tcp_src'] == flows_state[flow_id]['port_src']):
 		                valid=1
 		        except:
 		            pass
 		        try:
-		            if (stat.match['ipv4_dst'] == flow_state[flow_id]['ip_src']) and (stat.match['tcp_dst'] == flow_state[flow_id]['port_src']):
+		            if (stat.match['ipv4_dst'] == flows_state[flow_id]['ip_src']) and (stat.match['tcp_dst'] == flows_state[flow_id]['port_src']):
 		                valid=1
 		        except:
 		            pass
