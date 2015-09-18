@@ -108,17 +108,17 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 		elif direction == 'inbound':
 			intf='eth2'
 		if host =='DPI' :
-			return dpi_mac[intf]
+			return self.dpi_mac[intf]
 		elif host =='Wana' :
-			return wana_mac[intf]
+			return self.wana_mac[intf]
 		elif host =='TC' :
-			return tc_mac[intf]
+			return self.tc_mac[intf]
 		elif host =='GW' :
-			return gw_mac[intf]
+			return self.gw_mac[intf]
 		elif host =='WanaDec' :
-			return wana_dest_mac[intf]
+			return self.wana_dest_mac[intf]
 		elif host =='GWDest' :
-			return gw_dest_mac[intf]
+			return self.gw_dest_mac[intf]
 
 	# GET IN PORT
 	def get_in_port(self, nf, d):
@@ -428,7 +428,6 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 	# ----------------------CLASSIFICATION STATE----------------------
 
 	def _handle_Classification_C_State(self, flow_id, match_from_packet): 
-		#global outport
 		global active_flows
 		tmp_list_opts = []
 		tmp_list_actions = []
@@ -539,7 +538,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 			action.append( parser.OFPActionSetField( eth_dst= mac_addr ) ) # Change MAC_DST because packets must go through ...
 			action.append( parser.OFPActionOutput( switch_port[1] ) ) #...DPI
 			inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-			msg = parser.OFPFlowMod( hard_timeout=270, priority=34500, match=parser.OFPMatch( in_port = outport, eth_type = 2048, ip_proto=pkt_ipv4.proto, ipv4_dst = nw_src, tcp_dst = pkt_tcp.src_port ), instructions=inst )
+			msg = parser.OFPFlowMod( hard_timeout=270, priority=34500, match=parser.OFPMatch( in_port = self.outport, eth_type = 2048, ip_proto=pkt_ipv4.proto, ipv4_dst = nw_src, tcp_dst = pkt_tcp.src_port ), instructions=inst )
 			dp.send(msg)
 			# Add the previous rule to internal memory
 			# Options
@@ -814,7 +813,6 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 		global flow_state
 		global classified_flows
 		global hipriousers
-		#global outport
 
 	
 		if flow_state[flow_id]['ip_src'] in hipriousers :		#HIGH PRIORITY CASE
@@ -907,7 +905,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 			action.append( parser.OFPActionSetField( eth_dst= mac_addr ) ) # Change MAC_DST because packets must go through ...
 			action.append( parser.OFPActionOutput( switch_port[1] ) ) #...Wana (WAN port)
 			inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-			msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( in_port = outport, eth_type = 2048, ip_proto=flow_state[flow_id]['ip_proto'], ipv4_dst = flow_state[flow_id]['ip_src'], tcp_dst = flow_state[flow_id]['port_src'] ), instructions=inst )
+			msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( in_port = self.outport, eth_type = 2048, ip_proto=flow_state[flow_id]['ip_proto'], ipv4_dst = flow_state[flow_id]['ip_src'], tcp_dst = flow_state[flow_id]['port_src'] ), instructions=inst )
 			dp.send(msg)
 			# Add the previous rule to internal memory
 			# Options
@@ -1209,7 +1207,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 			action.append( parser.OFPActionSetField( eth_dst= mac_addr ) ) # Change MAC_DST because packets must go through ...
 			action.append( parser.OFPActionOutput( switch_port[1] ) ) #...TC (2nd port)
 			inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-			msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( in_port = outport, eth_type = 2048, ip_proto=flow_state[flow_id]['ip_proto'], ipv4_dst = flow_state[flow_id]['ip_src'], tcp_dst = flow_state[flow_id]['port_src'] ), instructions=inst )
+			msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( in_port = self.outport, eth_type = 2048, ip_proto=flow_state[flow_id]['ip_proto'], ipv4_dst = flow_state[flow_id]['ip_src'], tcp_dst = flow_state[flow_id]['port_src'] ), instructions=inst )
 			dp.send(msg)
 			# Add the previous rule to internal memory
 			# Options
@@ -1438,7 +1436,6 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 		global flows_state
 		global classified_flows
 		global hipriousers
-		#global outport	
 
 		for flow in classified_flows :
 			if flow_state[flow]['state'] != 'E' :
@@ -1531,7 +1528,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 					action.append( parser.OFPActionSetField( eth_dst= mac_addr ) ) # Change MAC_DST because packets must go through ...
 					action.append( parser.OFPActionOutput( switch_port[1] ) ) #...WANA (WAN port)
 					inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-					msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( in_port = outport, eth_type = 2048, ip_proto=flow_state[flow]['ip_proto'], ipv4_dst = flow_state[flow]['ip_src'], tcp_dst = flow_state[flow]['port_src'] ), instructions=inst )
+					msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( in_port = self.outport, eth_type = 2048, ip_proto=flow_state[flow]['ip_proto'], ipv4_dst = flow_state[flow]['ip_src'], tcp_dst = flow_state[flow]['port_src'] ), instructions=inst )
 					dp.send(msg)
 					# Add the previous rule to internal memory
 					# Options
@@ -1833,7 +1830,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 					action.append( parser.OFPActionSetField( eth_dst= mac_addr ) ) # Change MAC_DST because packets must go through ...
 					action.append( parser.OFPActionOutput( switch_port[1] ) ) #...TC (2nd port)
 					inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-					msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( in_port = outport, eth_type = 2048, ip_proto=flow_state[flow]['ip_proto'], ipv4_dst = flow_state[flow]['ip_src'], tcp_dst = flow_state[flow]['port_src'] ), instructions=inst )
+					msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( in_port = self.outport, eth_type = 2048, ip_proto=flow_state[flow]['ip_proto'], ipv4_dst = flow_state[flow]['ip_src'], tcp_dst = flow_state[flow]['port_src'] ), instructions=inst )
 					dp.send(msg)
 					# Add the previous rule to internal memory
 					# Options
@@ -2114,7 +2111,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 				parser = dp.ofproto_parser
 				action=parser.OFPActionOutput(ofp.OFPP_NORMAL)
 				inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-				msg = parser.OFPFlowMod( idle_timeout=60, priority=34502, match=parser.OFPMatch( in_port = outport, eth_type = 2048, ip_proto=flow_state[flow]['ip_proto'], ipv4_dst = flow_state[flow]['ip_src'], tcp_dst = flow_state[flow]['port_src'] ), instructions=inst, command=ofproto.OFPFC_DELETE  )
+				msg = parser.OFPFlowMod( idle_timeout=60, priority=34502, match=parser.OFPMatch( in_port = self.outport, eth_type = 2048, ip_proto=flow_state[flow]['ip_proto'], ipv4_dst = flow_state[flow]['ip_src'], tcp_dst = flow_state[flow]['port_src'] ), instructions=inst, command=ofproto.OFPFC_DELETE  )
 				dp.send(msg)
 				# Add the previous rule to internal memory
 				# Options
@@ -2410,7 +2407,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 				parser = dp.ofproto_parser
 				action=parser.OFPActionOutput(ofp.OFPP_NORMAL)
 				inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-				msg = parser.OFPFlowMod( idle_timeout=60, priority=34502, match=parser.OFPMatch( in_port = outport, eth_type = 2048, ip_proto=flow_state[flow]['ip_proto'], ipv4_dst = flow_state[flow]['ip_src'], tcp_dst = flow_state[flow]['port_src'] ), instructions=inst  )
+				msg = parser.OFPFlowMod( idle_timeout=60, priority=34502, match=parser.OFPMatch( in_port = self.outport, eth_type = 2048, ip_proto=flow_state[flow]['ip_proto'], ipv4_dst = flow_state[flow]['ip_src'], tcp_dst = flow_state[flow]['port_src'] ), instructions=inst  )
 				dp.send(msg)
 				# Add the previous rule to internal memory
 				# Options
