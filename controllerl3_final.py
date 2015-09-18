@@ -741,7 +741,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 			tmp_dict_actions = {}
 
 			# START DPI
-			def startDPI()
+			self.startDPI()
 
 			# UPDATE ACTIVE FLOWS
 			active_flows.append(flow_id)
