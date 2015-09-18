@@ -303,8 +303,8 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 			flows_state.append(flow)
 			active_flows.append(flow_id)
 
-	#UPDATE LOG
-	self.logger.debug("**FLOW UPGRADED** : %s", flows_state[flow_id])
+		#UPDATE LOG
+		self.logger.debug("**FLOW UPGRADED** : %s", flows_state[flow_id])
 
 	#Handle reception of StateChange message (NOTE. the message is sent whenever a switch performs the handshake with controller)
 	@set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
