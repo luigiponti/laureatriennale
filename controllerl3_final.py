@@ -168,7 +168,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 		            pass
 			if valid == 1 :
 		    	self.logger.info('flow %s is active', flow_id)
-			elif valid == 1 :
+			elif valid == 0 :
 		    	self.logger.info('flow %s is not active', flow_id)
 				active_flows.remove(flow_id)
 		    	self.logger.info('flow %s removed from active_flows', flow_id)
