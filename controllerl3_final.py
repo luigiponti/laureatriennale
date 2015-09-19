@@ -220,9 +220,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 			return -1
 
 	#function executed after DPI analysis
-	def dpi_analysis_finished (self, flow_id):
-		
-		global flow_id
+	def dpi_analysis_finished(self, flow_id):
 		
 		# Step 1: stop DPI
 		self.stopDPI()
@@ -326,7 +324,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
                 self.add_flow(datapath, 0, match, actions)
 
 				# ARP and ICMP
-				_handle_Initial_Init_State(self, datapath)
+				self._handle_Initial_Init_State(datapath)
 
         elif ev.state == DEAD_DISPATCHER:
             if datapath.id in self.switch_dpid_name:
@@ -741,9 +739,6 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 
 			# START DPI
 			self.startDPI()
-
-			# UPDATE ACTIVE FLOWS
-			active_flows.append(flow_id)
 
 		else :			# D CASE
 	
