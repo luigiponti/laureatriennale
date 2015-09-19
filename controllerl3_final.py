@@ -37,6 +37,8 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 	hipriousers = [] #List of high priority users
 	global flowlimit
 	flowlimit = 3	#Max flow in Not Enforcement case
+	global wanaproto
+	wanaproto = [200, 201, 202]	#Protocols of compressed packets
 
 	def __init__(self, *args, **kwargs):
 		super(BasicOpenStackL3Controller, self).__init__(*args, **kwargs)
@@ -808,6 +810,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 		global flow_state
 		global classified_flows
 		global hipriousers
+		global wanaproto
 
 	
 		if flow_state[flow_id]['ip_src'] in hipriousers :		#HIGH PRIORITY CASE
@@ -853,7 +856,6 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 			tmp_dict_match = {}
 			tmp_dict_actions = {}
 			
-
 			# br-int internal network, inbound traffic, from Wana (LAN port) to HiPrioUser
 			switch_port = []
 			switch_port = self.get_in_port('Wana', 'outbound')
@@ -889,156 +891,158 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 			tmp_dict_match = {}
 			tmp_dict_actions = {}
 
-			# br-int Gateway network, inbound traffic, from br4 to Wana (WAN port), MAC_DST is changed
-			switch_port = []
-			action=[]
-			switch_port = self.get_in_port('Wana', 'inbound')
-			mac_addr = self.get_in_mac_address('Wana', 'inbound')
-			dp=connectionForBridge(switch_port[0])
-			ofproto = dp.ofproto
-			parser = dp.ofproto_parser
-			action.append( parser.OFPActionSetField( eth_dst= mac_addr ) ) # Change MAC_DST because packets must go through ...
-			action.append( parser.OFPActionOutput( switch_port[1] ) ) #...Wana (WAN port)
-			inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-			msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( in_port = self.outport, eth_type = 2048, ip_proto=flow_state[flow_id]['ip_proto'], ipv4_dst = flow_state[flow_id]['ip_src'], tcp_dst = flow_state[flow_id]['port_src'] ), instructions=inst )
-			dp.send(msg)
-			# Add the previous rule to internal memory
-			# Options
-			tmp_dict_opts['idle_timeout'] = msg.idle_timeout
-			tmp_dict_opts['priority'] = msg.priority
-			# Matching rule
-			tmp_dict_match['in_port'] = msg.match.in_port
-			tmp_dict_match['eth_type'] = msg.match.eth_type
-			tmp_dict_match['ip_proto'] = msg.match.ip_proto
-			tmp_dict_match['ipv4_dst'] = msg.match.ipv4_dst
-			tmp_dict_match['tcp_dst'] = msg.match.tcp_dst
-			# Actions
-			tmp_dict_actions['type'] = 'OFPAT_SET_DL_DST'
-			tmp_dict_actions['dl_addr'] = mac_addr # string format: remember to convert to EthAddr()
-			tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
-			tmp_dict_actions.clear() # Empty dict_actions
-			tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
-			tmp_dict_actions['port'] = switch_port[1]
-			tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
-			tmp_dict_actions.clear() # Empty dict_actions 	
+			for protocol in wanaproto:
 
-			rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
-			rules_list.append(rule)
+				# br-int Gateway network, inbound traffic, from br4 to Wana (WAN port), MAC_DST is changed
+				switch_port = []
+				action=[]
+				switch_port = self.get_in_port('Wana', 'inbound')
+				mac_addr = self.get_in_mac_address('Wana', 'inbound')
+				dp=connectionForBridge(switch_port[0])
+				ofproto = dp.ofproto
+				parser = dp.ofproto_parser
+				action.append( parser.OFPActionSetField( eth_dst= mac_addr ) ) # Change MAC_DST because packets must go through ...
+				action.append( parser.OFPActionOutput( switch_port[1] ) ) #...Wana (WAN port)
+				inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
+				msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( in_port = self.outport, eth_type = 2048, ip_proto=protocol, ipv4_dst = flow_state[flow_id]['ip_src'], tcp_dst = flow_state[flow_id]['port_src'] ), instructions=inst )
+				dp.send(msg)
+				# Add the previous rule to internal memory
+				# Options
+				tmp_dict_opts['idle_timeout'] = msg.idle_timeout
+				tmp_dict_opts['priority'] = msg.priority
+				# Matching rule
+				tmp_dict_match['in_port'] = msg.match.in_port
+				tmp_dict_match['eth_type'] = msg.match.eth_type
+				tmp_dict_match['ip_proto'] = msg.match.ip_proto
+				tmp_dict_match['ipv4_dst'] = msg.match.ipv4_dst
+				tmp_dict_match['tcp_dst'] = msg.match.tcp_dst
+				# Actions
+				tmp_dict_actions['type'] = 'OFPAT_SET_DL_DST'
+				tmp_dict_actions['dl_addr'] = mac_addr # string format: remember to convert to EthAddr()
+				tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
+				tmp_dict_actions.clear() # Empty dict_actions
+				tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
+				tmp_dict_actions['port'] = switch_port[1]
+				tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
+				tmp_dict_actions.clear() # Empty dict_actions 	
 
-			tmp_list_opts = []
-			tmp_list_actions = []
-			tmp_dict_match = {}
-			tmp_dict_actions = {}
+				rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
+				rules_list.append(rule)
 
-			# br-int Gateway network, outbound traffic, from Wana (WAN port) to br4
-			switch_port = []
-			switch_port = self.get_in_port('Wana', 'inbound')
-			dp=connectionForBridge(switch_port[0])
-			ofproto = dp.ofproto
-			parser = dp.ofproto_parser
-			action=parser.OFPActionOutput(ofp.OFPP_NORMAL)
-			inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-			msg = parser.OFPFlowMod( idle_timeout=60, priority = 34501, match = parser.OFPMatch(in_port = switch_port[1], eth_type = 2048, ip_proto=flow_state[flow_id]['ip_proto'], ipv4_src = flow_state[flow_id]['ip_src'],  tcp_src = flow_state[flow_id]['port_src']), instructions=inst )
-			dp.send(msg)	
-			# Add the previous rule to internal memory
-			# Options
-			tmp_dict_opts['idle_timeout'] = msg.idle_timeout
-			tmp_dict_opts['priority'] = msg.priority
-			# Matching rule
-			tmp_dict_match['in_port'] = msg.match.in_port
-			tmp_dict_match['eth_type'] = msg.match.eth_type
-			tmp_dict_match['ip_proto'] = msg.match.ip_proto
-			tmp_dict_match['ipv4_src'] = msg.match.ipv4_src
-			tmp_dict_match['tcp_src'] = msg.match.tcp_src
-			# Actions
-			switch_port.append('OFPP_NORMAL')
-			tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
-			tmp_dict_actions['port'] = switch_port[2]
-			tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
-			tmp_dict_actions.clear() # Empty dict_actions
+				tmp_list_opts = []
+				tmp_list_actions = []
+				tmp_dict_match = {}
+				tmp_dict_actions = {}
+
+				# br-int Gateway network, outbound traffic, from Wana (WAN port) to br4
+				switch_port = []
+				switch_port = self.get_in_port('Wana', 'inbound')
+				dp=connectionForBridge(switch_port[0])
+				ofproto = dp.ofproto
+				parser = dp.ofproto_parser
+				action=parser.OFPActionOutput(ofp.OFPP_NORMAL)
+				inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
+				msg = parser.OFPFlowMod( idle_timeout=60, priority = 34501, match = parser.OFPMatch(in_port = switch_port[1], eth_type = 2048, ip_proto=protocol, ipv4_src = flow_state[flow_id]['ip_src'],  tcp_src = flow_state[flow_id]['port_src']), instructions=inst )
+				dp.send(msg)	
+				# Add the previous rule to internal memory
+				# Options
+				tmp_dict_opts['idle_timeout'] = msg.idle_timeout
+				tmp_dict_opts['priority'] = msg.priority
+				# Matching rule
+				tmp_dict_match['in_port'] = msg.match.in_port
+				tmp_dict_match['eth_type'] = msg.match.eth_type
+				tmp_dict_match['ip_proto'] = msg.match.ip_proto
+				tmp_dict_match['ipv4_src'] = msg.match.ipv4_src
+				tmp_dict_match['tcp_src'] = msg.match.tcp_src
+				# Actions
+				switch_port.append('OFPP_NORMAL')
+				tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
+				tmp_dict_actions['port'] = switch_port[2]
+				tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
+				tmp_dict_actions.clear() # Empty dict_actions
 		
-			rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
-			rules_list.append(rule)
+				rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
+				rules_list.append(rule)
 		
-			tmp_list_opts = []
-			tmp_list_actions = []
-			tmp_dict_match = {}
-			tmp_dict_actions = {}
+				tmp_list_opts = []
+				tmp_list_actions = []
+				tmp_dict_match = {}
+				tmp_dict_actions = {}
 
-			# br4, outbound traffic, to WanaDec
-			switch_port = []
-			action=[]
-			switch_port = self.get_in_port('WanaDec', 'outbound')		#vettore con due elementi, indice 0 nome switch, indice 1 porta
-			mac_addr = self.get_in_mac_address('WanaDec', 'outbound')
-			dp=connectionForBridge(switch_port[0])
-			ofproto = dp.ofproto
-			parser = dp.ofproto_parser
-			action.append( parser.OFPActionSetField(eth_dst= mac_addr ) ) # Change MAC_DST because packets must go through ...
-			action.append( parser.OFPActionOutput( switch_port[1] ) ) #...WanaDec (WAN port)
-			inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-			msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( eth_type = 2048, ip_proto=flow_state[flow_id]['ip_proto'], ipv4_src = flow_state[flow_id]['ip_src'], tcp_src = flow_state[flow_id]['port_src'] ), instructions=inst )
-			dp.send_msg(msg)
-			# Add the previous rule to internal memory
-			# Options
-			tmp_dict_opts['idle_timeout'] = msg.idle_timeout
-			tmp_dict_opts['priority'] = msg.priority
-			# Matching rule
-			tmp_dict_match['eth_type'] = msg.match.eth_type
-			tmp_dict_match['ip_proto'] = msg.match.ip_proto
-			tmp_dict_match['ipv4_src'] = msg.match.ipv4_src
-			tmp_dict_match['tcp_src'] = msg.match.tcp_src
-			# Actions
-			tmp_dict_actions['type'] = 'OFPAT_SET_DL_DST'
-			tmp_dict_actions['dl_addr'] = mac_addr # string format: remember to convert to EthAddr()
-			tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
-			tmp_dict_actions.clear() # Empty dict_actions
-			tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
-			tmp_dict_actions['port'] = switch_port[1]	
-			tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
-			tmp_dict_actions.clear() # Empty dict_actions
+				# br4, outbound traffic, to WanaDec
+				switch_port = []
+				action=[]
+				switch_port = self.get_in_port('WanaDec', 'outbound')		#vettore con due elementi, indice 0 nome switch, indice 1 porta
+				mac_addr = self.get_in_mac_address('WanaDec', 'outbound')
+				dp=connectionForBridge(switch_port[0])
+				ofproto = dp.ofproto
+				parser = dp.ofproto_parser
+				action.append( parser.OFPActionSetField(eth_dst= mac_addr ) ) # Change MAC_DST because packets must go through ...
+				action.append( parser.OFPActionOutput( switch_port[1] ) ) #...WanaDec (WAN port)
+				inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
+				msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( eth_type = 2048, ip_proto=protocol, ipv4_src = flow_state[flow_id]['ip_src'], tcp_src = flow_state[flow_id]['port_src'] ), instructions=inst )
+				dp.send_msg(msg)
+				# Add the previous rule to internal memory
+				# Options
+				tmp_dict_opts['idle_timeout'] = msg.idle_timeout
+				tmp_dict_opts['priority'] = msg.priority
+				# Matching rule
+				tmp_dict_match['eth_type'] = msg.match.eth_type
+				tmp_dict_match['ip_proto'] = msg.match.ip_proto
+				tmp_dict_match['ipv4_src'] = msg.match.ipv4_src
+				tmp_dict_match['tcp_src'] = msg.match.tcp_src
+				# Actions
+				tmp_dict_actions['type'] = 'OFPAT_SET_DL_DST'
+				tmp_dict_actions['dl_addr'] = mac_addr # string format: remember to convert to EthAddr()
+				tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
+				tmp_dict_actions.clear() # Empty dict_actions
+				tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
+				tmp_dict_actions['port'] = switch_port[1]	
+				tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
+				tmp_dict_actions.clear() # Empty dict_actions
 
-			rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
-			rules_list.append(rule)
+				rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
+				rules_list.append(rule)
 
-			tmp_list_opts = []
-			tmp_list_actions = []
-			tmp_dict_match = {}
-			tmp_dict_actions = {}
+				tmp_list_opts = []
+				tmp_list_actions = []
+				tmp_dict_match = {}
+				tmp_dict_actions = {}
 
-			# br4, inbound traffic, from WanaDec
-			switch_port = []
-			switch_port = self.get_in_port('WanaDec', 'outbound')
-			dp=connectionForBridge(switch_port[0])
-			ofproto = dp.ofproto
-			parser = dp.ofproto_parser
-			action=parser.OFPActionOutput(ofp.OFPP_NORMAL)
-			inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-			msg = parser.OFPFlowMod(idle_timeout=60, priority = 34501, match = parser.OFPMatch(in_port = switch_port[1], eth_type = 2048, ip_proto=flow_state[flow_id]['ip_proto'], ipv4_dst = flow_state[flow_id]['ip_src'],  tcp_dst = flow_state[flow_id]['port_src']), instructions=inst )
-			dp.send(msg)
-			# Add the previous rule to internal memory
-			# Options
-			tmp_dict_opts['idle_timeout'] = msg.idle_timeout
-			tmp_dict_opts['priority'] = msg.priority
-			# Matching rule
-			tmp_dict_match['in_port'] = msg.match.in_port
-			tmp_dict_match['eth_type'] = msg.match.eth_type
-			tmp_dict_match['ip_proto'] = msg.match.ip_proto
-			tmp_dict_match['ipv4_dst'] = msg.match.ipv4_dst
-			tmp_dict_match['tcp_dst'] = msg.match.tcp_dst
-			# Actions
-			switch_port.append('OFPP_NORMAL')
-			tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
-			tmp_dict_actions['port'] = switch_port[2]
-			tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
-			tmp_dict_actions.clear() # Empty dict_actions 
+				# br4, inbound traffic, from WanaDec
+				switch_port = []
+				switch_port = self.get_in_port('WanaDec', 'outbound')
+				dp=connectionForBridge(switch_port[0])
+				ofproto = dp.ofproto
+				parser = dp.ofproto_parser
+				action=parser.OFPActionOutput(ofp.OFPP_NORMAL)
+				inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
+				msg = parser.OFPFlowMod(idle_timeout=60, priority = 34501, match = parser.OFPMatch(in_port = switch_port[1], eth_type = 2048, ip_proto=protocol, ipv4_dst = flow_state[flow_id]['ip_src'],  tcp_dst = flow_state[flow_id]['port_src']), instructions=inst )
+				dp.send(msg)
+				# Add the previous rule to internal memory
+				# Options
+				tmp_dict_opts['idle_timeout'] = msg.idle_timeout
+				tmp_dict_opts['priority'] = msg.priority
+				# Matching rule
+				tmp_dict_match['in_port'] = msg.match.in_port
+				tmp_dict_match['eth_type'] = msg.match.eth_type
+				tmp_dict_match['ip_proto'] = msg.match.ip_proto
+				tmp_dict_match['ipv4_dst'] = msg.match.ipv4_dst
+				tmp_dict_match['tcp_dst'] = msg.match.tcp_dst
+				# Actions
+				switch_port.append('OFPP_NORMAL')
+				tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
+				tmp_dict_actions['port'] = switch_port[2]
+				tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
+				tmp_dict_actions.clear() # Empty dict_actions 
 
-			rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
-			rules_list.append(rule)
+				rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
+				rules_list.append(rule)
 	
-			tmp_list_opts = []
-			tmp_list_actions = []
-			tmp_dict_match = {}
-			tmp_dict_actions = {}
+				tmp_list_opts = []
+				tmp_list_actions = []
+				tmp_dict_match = {}
+				tmp_dict_actions = {}
 
 			# br3, outbound traffic, from WanaDec
 			switch_port = []
@@ -1431,6 +1435,7 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 		global flows_state
 		global classified_flows
 		global hipriousers
+		global wanaproto
 
 		for flow in classified_flows :
 			if flow_state[flow]['state'] != 'E' :
@@ -1512,156 +1517,158 @@ class BasicOpenStackL3Controller(app_manager.RyuApp):
 					tmp_dict_match = {}
 					tmp_dict_actions = {}
 
-					# br-int Gateway network, inbound traffic, from br4 to Wana (WAN port), MAC_DST is changed
-					switch_port = []
-					action=[]
-					switch_port = self.get_in_port('Wana', 'inbound')
-					mac_addr = self.get_in_mac_address('Wana', 'inbound')
-					dp=connectionForBridge(switch_port[0])
-					ofproto = dp.ofproto
-					parser = dp.ofproto_parser
-					action.append( parser.OFPActionSetField( eth_dst= mac_addr ) ) # Change MAC_DST because packets must go through ...
-					action.append( parser.OFPActionOutput( switch_port[1] ) ) #...WANA (WAN port)
-					inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-					msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( in_port = self.outport, eth_type = 2048, ip_proto=flow_state[flow]['ip_proto'], ipv4_dst = flow_state[flow]['ip_src'], tcp_dst = flow_state[flow]['port_src'] ), instructions=inst )
-					dp.send(msg)
-					# Add the previous rule to internal memory
-					# Options
-					tmp_dict_opts['idle_timeout'] = msg.idle_timeout
-					tmp_dict_opts['priority'] = msg.priority
-					# Matching rule
-					tmp_dict_match['in_port'] = msg.match.in_port
-					tmp_dict_match['eth_type'] = msg.match.eth_type
-					tmp_dict_match['ip_proto'] = msg.match.ip_proto
-					tmp_dict_match['ipv4_dst'] = msg.match.ipv4_dst
-					tmp_dict_match['tcp_dst'] = msg.match.tcp_dst
-					# Actions
-					tmp_dict_actions['type'] = 'OFPAT_SET_DL_DST'
-					tmp_dict_actions['dl_addr'] = mac_addr # string format: remember to convert to EthAddr()
-					tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
-					tmp_dict_actions.clear() # Empty dict_actions
-					tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
-					tmp_dict_actions['port'] = switch_port[1]
-					tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
-					tmp_dict_actions.clear() # Empty dict_actions
+					for protocol in wanaproto:
 
-					rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
-					rules_list.append(rule)
+						# br-int Gateway network, inbound traffic, from br4 to Wana (WAN port), MAC_DST is changed
+						switch_port = []
+						action=[]
+						switch_port = self.get_in_port('Wana', 'inbound')
+						mac_addr = self.get_in_mac_address('Wana', 'inbound')
+						dp=connectionForBridge(switch_port[0])
+						ofproto = dp.ofproto
+						parser = dp.ofproto_parser
+						action.append( parser.OFPActionSetField( eth_dst= mac_addr ) ) # Change MAC_DST because packets must go through ...
+						action.append( parser.OFPActionOutput( switch_port[1] ) ) #...WANA (WAN port)
+						inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
+						msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( in_port = self.outport, eth_type = 2048, ip_proto=protocol, ipv4_dst = flow_state[flow]['ip_src'], tcp_dst = flow_state[flow]['port_src'] ), instructions=inst )
+						dp.send(msg)
+						# Add the previous rule to internal memory
+						# Options
+						tmp_dict_opts['idle_timeout'] = msg.idle_timeout
+						tmp_dict_opts['priority'] = msg.priority
+						# Matching rule
+						tmp_dict_match['in_port'] = msg.match.in_port
+						tmp_dict_match['eth_type'] = msg.match.eth_type
+						tmp_dict_match['ip_proto'] = msg.match.ip_proto
+						tmp_dict_match['ipv4_dst'] = msg.match.ipv4_dst
+						tmp_dict_match['tcp_dst'] = msg.match.tcp_dst
+						# Actions
+						tmp_dict_actions['type'] = 'OFPAT_SET_DL_DST'
+						tmp_dict_actions['dl_addr'] = mac_addr # string format: remember to convert to EthAddr()
+						tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
+						tmp_dict_actions.clear() # Empty dict_actions
+						tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
+						tmp_dict_actions['port'] = switch_port[1]
+						tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
+						tmp_dict_actions.clear() # Empty dict_actions
 
-					tmp_list_opts = []
-					tmp_list_actions = []
-					tmp_dict_match = {}
-					tmp_dict_actions = {}
+						rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
+						rules_list.append(rule)
 
-					# br-int Gateway network, outbound traffic, from Wana (WAN port) to br4
-					switch_port = []
-					switch_port = self.get_in_port('Wana', 'inbound')
-					dp=connectionForBridge(switch_port[0])
-					ofproto = dp.ofproto
-					parser = dp.ofproto_parser
-					action=parser.OFPActionOutput(ofp.OFPP_NORMAL)
-					inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-					msg = parser.OFPFlowMod( idle_timeout=60, priority = 34501, match = parser.OFPMatch(in_port = switch_port[1], eth_type = 2048, ip_proto=flow_state[flow]['ip_proto'], ipv4_src = flow_state[flow]['ip_src'], tcp_src = flow_state[flow]['port_src']), instructions=inst )
-					dp.send(msg)	
-					# Add the previous rule to internal memory
-					# Options
-					tmp_dict_opts['idle_timeout'] = msg.idle_timeout
-					tmp_dict_opts['priority'] = msg.priority
-					# Matching rule
-					tmp_dict_match['in_port'] = msg.match.in_port
-					tmp_dict_match['eth_type'] = msg.match.eth_type
-					tmp_dict_match['ip_proto'] = msg.match.ip_proto
-					tmp_dict_match['ipv4_src'] = msg.match.ipv4_src
-					tmp_dict_match['tcp_src'] = msg.match.tcp_src
-					# Actions
-					switch_port.append('OFPP_NORMAL')
-					tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
-					tmp_dict_actions['port'] = switch_port[2]
-					tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
-					tmp_dict_actions.clear() # Empty dict_actions
+						tmp_list_opts = []
+						tmp_list_actions = []
+						tmp_dict_match = {}
+						tmp_dict_actions = {}
+
+						# br-int Gateway network, outbound traffic, from Wana (WAN port) to br4
+						switch_port = []
+						switch_port = self.get_in_port('Wana', 'inbound')
+						dp=connectionForBridge(switch_port[0])
+						ofproto = dp.ofproto
+						parser = dp.ofproto_parser
+						action=parser.OFPActionOutput(ofp.OFPP_NORMAL)
+						inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
+						msg = parser.OFPFlowMod( idle_timeout=60, priority = 34501, match = parser.OFPMatch(in_port = switch_port[1], eth_type = 2048, ip_proto=protocol, ipv4_src = flow_state[flow]['ip_src'], tcp_src = flow_state[flow]['port_src']), instructions=inst )
+						dp.send(msg)	
+						# Add the previous rule to internal memory
+						# Options
+						tmp_dict_opts['idle_timeout'] = msg.idle_timeout
+						tmp_dict_opts['priority'] = msg.priority
+						# Matching rule
+						tmp_dict_match['in_port'] = msg.match.in_port
+						tmp_dict_match['eth_type'] = msg.match.eth_type
+						tmp_dict_match['ip_proto'] = msg.match.ip_proto
+						tmp_dict_match['ipv4_src'] = msg.match.ipv4_src
+						tmp_dict_match['tcp_src'] = msg.match.tcp_src
+						# Actions
+						switch_port.append('OFPP_NORMAL')
+						tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
+						tmp_dict_actions['port'] = switch_port[2]
+						tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
+						tmp_dict_actions.clear() # Empty dict_actions
 		
-					rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
-					rules_list.append(rule)
+						rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
+						rules_list.append(rule)
 		
-					tmp_list_opts = []
-					tmp_list_actions = []
-					tmp_dict_match = {}
-					tmp_dict_actions = {}
+						tmp_list_opts = []
+						tmp_list_actions = []
+						tmp_dict_match = {}
+						tmp_dict_actions = {}
 
-					# br4, outbound traffic, to WanaDec
-					switch_port = []
-					action=[]
-					switch_port = self.get_in_port('WanaDec', 'outbound')
-					mac_addr = self.get_in_mac_address('WanaDec', 'outbound')
-					dp=connectionForBridge(switch_port[0])
-					ofproto = dp.ofproto
-					parser = dp.ofproto_parser
-					action.append( parser.OFPActionSetField(eth_dst= mac_addr ) ) # Change MAC_DST because packets must go through ...
-					action.append( parser.OFPActionOutput( switch_port[1] ) ) #... WanaDec (WAN port)
-					inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-					msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( eth_type = 2048, ip_proto=flow_state[flow]['ip_proto'], ipv4_src = flow_state[flow]['ip_src'], tcp_src = flow_state[flow]['port_src'] ), instructions=inst )
-					dp.send_msg(msg)
-					# Add the previous rule to internal memory
-					# Options
-					tmp_dict_opts['idle_timeout'] = msg.idle_timeout
-					tmp_dict_opts['priority'] = msg.priority
-					# Matching rule
-					tmp_dict_match['eth_type'] = msg.match.eth_type
-					tmp_dict_match['ip_proto'] = msg.match.ip_proto
-					tmp_dict_match['ipv4_src'] = msg.match.ipv4_src
-					tmp_dict_match['tcp_src'] = msg.match.tcp_src
-					# Actions
-					tmp_dict_actions['type'] = 'OFPAT_SET_DL_DST'
-					tmp_dict_actions['dl_addr'] = mac_addr # string format: remember to convert to EthAddr()
-					tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
-					tmp_dict_actions.clear() # Empty dict_actions
-					tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
-					tmp_dict_actions['port'] = switch_port[1]	
-					tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
-					tmp_dict_actions.clear() # Empty dict_actions
+						# br4, outbound traffic, to WanaDec
+						switch_port = []
+						action=[]
+						switch_port = self.get_in_port('WanaDec', 'outbound')
+						mac_addr = self.get_in_mac_address('WanaDec', 'outbound')
+						dp=connectionForBridge(switch_port[0])
+						ofproto = dp.ofproto
+						parser = dp.ofproto_parser
+						action.append( parser.OFPActionSetField(eth_dst= mac_addr ) ) # Change MAC_DST because packets must go through ...
+						action.append( parser.OFPActionOutput( switch_port[1] ) ) #... WanaDec (WAN port)
+						inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
+						msg = parser.OFPFlowMod( idle_timeout=60, priority=34501, match=parser.OFPMatch( eth_type = 2048, ip_proto=protocol, ipv4_src = flow_state[flow]['ip_src'], tcp_src = flow_state[flow]['port_src'] ), instructions=inst )
+						dp.send_msg(msg)
+						# Add the previous rule to internal memory
+						# Options
+						tmp_dict_opts['idle_timeout'] = msg.idle_timeout
+						tmp_dict_opts['priority'] = msg.priority
+						# Matching rule
+						tmp_dict_match['eth_type'] = msg.match.eth_type
+						tmp_dict_match['ip_proto'] = msg.match.ip_proto
+						tmp_dict_match['ipv4_src'] = msg.match.ipv4_src
+						tmp_dict_match['tcp_src'] = msg.match.tcp_src
+						# Actions
+						tmp_dict_actions['type'] = 'OFPAT_SET_DL_DST'
+						tmp_dict_actions['dl_addr'] = mac_addr # string format: remember to convert to EthAddr()
+						tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
+						tmp_dict_actions.clear() # Empty dict_actions
+						tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
+						tmp_dict_actions['port'] = switch_port[1]	
+						tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
+						tmp_dict_actions.clear() # Empty dict_actions
 
-					rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
-					rules_list.append(rule)
+						rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
+						rules_list.append(rule)
 
-					tmp_list_opts = []
-					tmp_list_actions = []
-					tmp_dict_match = {}
-					tmp_dict_actions = {}
+						tmp_list_opts = []
+						tmp_list_actions = []
+						tmp_dict_match = {}
+						tmp_dict_actions = {}
 
-					# br4, inbound traffic, from WanaDec
-					switch_port = []
-					switch_port = self.get_in_port('WanaDec', 'outbound')
-					dp=connectionForBridge(switch_port[0])
-					ofproto = dp.ofproto
-					parser = dp.ofproto_parser
-					action=parser.OFPActionOutput(ofp.OFPP_NORMAL)
-					inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
-					msg = parser.OFPFlowMod(idle_timeout=60, priority = 34501, match = parser.OFPMatch(in_port = switch_port[1], eth_type = 2048, ip_proto=flow_state[flow]['ip_proto'], ipv4_dst = flow_state[flow]['ip_src'],  tcp_dst = flow_state[flow]['port_src']), instructions=inst )
-					dp.send(msg)
-					# Add the previous rule to internal memory
-					# Options
-					tmp_dict_opts['idle_timeout'] = msg.idle_timeout
-					tmp_dict_opts['priority'] = msg.priority
-					# Matching rule
-					tmp_dict_match['in_port'] = msg.match.in_port
-					tmp_dict_match['eth_type'] = msg.match.eth_type
-					tmp_dict_match['ip_proto'] = msg.match.ip_proto
-					tmp_dict_match['ipv4_dst'] = msg.match.ipv4_dst
-					tmp_dict_match['tcp_dst'] = msg.match.tcp_dst
-					# Actions
-					switch_port.append('OFPP_NORMAL')
-					tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
-					tmp_dict_actions['port'] = switch_port[2]
-					tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
-					tmp_dict_actions.clear() # Empty dict_actions 
+						# br4, inbound traffic, from WanaDec
+						switch_port = []
+						switch_port = self.get_in_port('WanaDec', 'outbound')
+						dp=connectionForBridge(switch_port[0])
+						ofproto = dp.ofproto
+						parser = dp.ofproto_parser
+						action=parser.OFPActionOutput(ofp.OFPP_NORMAL)
+						inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, action)]
+						msg = parser.OFPFlowMod(idle_timeout=60, priority = 34501, match = parser.OFPMatch(in_port = switch_port[1], eth_type = 2048, ip_proto=protocol, ipv4_dst = flow_state[flow]['ip_src'],  tcp_dst = flow_state[flow]['port_src']), instructions=inst )
+						dp.send(msg)
+						# Add the previous rule to internal memory
+						# Options
+						tmp_dict_opts['idle_timeout'] = msg.idle_timeout
+						tmp_dict_opts['priority'] = msg.priority
+						# Matching rule
+						tmp_dict_match['in_port'] = msg.match.in_port
+						tmp_dict_match['eth_type'] = msg.match.eth_type
+						tmp_dict_match['ip_proto'] = msg.match.ip_proto
+						tmp_dict_match['ipv4_dst'] = msg.match.ipv4_dst
+						tmp_dict_match['tcp_dst'] = msg.match.tcp_dst
+						# Actions
+						switch_port.append('OFPP_NORMAL')
+						tmp_dict_actions['type'] = 'OFPAT_OUTPUT'
+						tmp_dict_actions['port'] = switch_port[2]
+						tmp_list_actions.append(tmp_dict_actions) # Add actions to the list of actions
+						tmp_dict_actions.clear() # Empty dict_actions 
 	
-					rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
-					rules_list.append(rule)
+						rule = {'switch': switch_port[0].id, 'op': 'ADD', 'options': tmp_dict_opts, 'match': tmp_dict_match, 'actions': tmp_list_actions}
+						rules_list.append(rule)
 	
-					tmp_list_opts = []
-					tmp_list_actions = []
-					tmp_dict_match = {}
-					tmp_dict_actions = {}
+						tmp_list_opts = []
+						tmp_list_actions = []
+						tmp_dict_match = {}
+						tmp_dict_actions = {}
 
 					# br3, outbound traffic, from WanaDec
 					switch_port = []
